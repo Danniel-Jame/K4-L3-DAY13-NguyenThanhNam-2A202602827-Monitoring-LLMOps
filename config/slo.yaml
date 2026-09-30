@@ -3,11 +3,11 @@ primary_slo:
   name: fast_successful_requests
   window: 28d
   sli:
-    good_event: 'event == "response_sent" and latency_ms <= 3000'
+    good_event: 'event == "response_sent" and latency_ms <= 4000'
     total_event: 'event == "request_received"'
-  target_percent: 99.5
-  error_budget_percent: 0.5
-  note: Học viên phải giải thích hoặc điều chỉnh ngưỡng bằng baseline của mình. Ví dụ nếu có 10,000 request trong cửa sổ 28 ngày, error budget 0.5% nghĩa là tối đa 50 request được phép không đạt SLO.
+  target_percent: 95.0
+  error_budget_percent: 5.0
+  note: "Dựa trên baseline thực tế, ngưỡng latency được điều chỉnh thành 4000ms để phù hợp hơn với tốc độ phản hồi của LLM hiện tại. Với mức SLO mục tiêu là 95.0%, Error Budget của hệ thống sẽ là 5.0%. Ví dụ, nếu hệ thống nhận được 5,000 requests trong chu kỳ 28 ngày, Error Budget cho phép tối đa 250 requests (5000 x 5%) bị lỗi hoặc có độ trễ lớn hơn 4000ms trước khi hệ thống bị coi là vi phạm SLO."
 guardrails:
   error_rate_pct_max: 2
   daily_cost_usd_max: 2.5
