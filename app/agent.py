@@ -51,7 +51,21 @@ class LabAgent:
             },
         ):
             started = time.perf_counter()
-            docs = retrieve(message)
+            
+            # CP2: Instrument retrieve() as a child observation (span)
+            @observe(name="retrieval", as_type="span", capture_input=False, capture_output=False)
+            def _instrumented_retrieve(msg: str) -> list[str]:
+                retrieved_docs = retrieve(msg)
+                langfuse_client.update_current_span(
+                    metadata={
+                        "query_preview": summarize_text(msg),
+                        "doc_count": len(retrieved_docs)
+                    }
+                )
+                return retrieved_docs
+                
+            docs = _instrumented_retrieve(message)
+            
             prompt = resolve_prompt(
                 langfuse_client,
                 feature=feature,
@@ -71,13 +85,31 @@ class LabAgent:
                 },
                 version=prompt.version,
             )
-            # TODO (CP2): instrument retrieve() and FakeLLM.generate() as child
-            # observations. The nested generation must receive prompt, usage and cost.
+            
+            # CP2: Instrument FakeLLM.generate() as a child observation (generation)
+            @observe(name="generation", as_type="generation", capture_input=False, capture_output=False)
+            def _instrumented_generate(prompt_text: str):
+                resp = self.llm.generate(prompt_text)
+                cost = self._estimate_cost(resp.usage.input_tokens, resp.usage.output_tokens)
+                langfuse_client.update_current_observation(
+                    model=self.model,
+                    usage={
+                        "input": resp.usage.input_tokens,
+                        "output": resp.usage.output_tokens,
+                        "unit": "TOKENS",
+                        "cost": cost
+                    }
+                )
+                # Dùng prompt_name thay vì obj ManagedPrompt nguyên gốc để tránh lỗi serialize
+                if prompt.managed_prompt:
+                   langfuse_client.update_current_observation(prompt_name=prompt.managed_prompt.name, prompt_version=prompt.managed_prompt.version)
+                return resp, cost
+            
             with propagate_attributes(prompt=prompt.managed_prompt):
-                response = self.llm.generate(prompt.text)
+                response, cost_usd = _instrumented_generate(prompt.text)
+                
             quality_score = self._heuristic_quality(message, response.text, docs)
             latency_ms = int((time.perf_counter() - started) * 1000)
-            cost_usd = self._estimate_cost(response.usage.input_tokens, response.usage.output_tokens)
 
         metrics.record_request(
             latency_ms=latency_ms,
